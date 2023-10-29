@@ -201,6 +201,7 @@ match _ _                 = Left "match failed"
 
 -- A repl
 
+type Env = [(Char, (Term,Ty))]
 
 -- enumerate the free variables in the term
 frees :: Term -> [Char]
@@ -228,13 +229,13 @@ printDef (c,(term,t)) = do
     putStrLn ([c] ++ " = " ++ show term)
     putStrLn ""
 
-saveDefs :: [(Char,(Term,Ty))] -> IO ()
+saveDefs :: Env -> IO ()
 saveDefs env = do
     writeFile "floppy" $ unlines (map (\(c,(term,_)) -> [c] ++ " = " ++ show term) env)
 
-loadDefs :: [String] -> Either String [(Char, (Term,Ty))]
+loadDefs :: [String] -> Either String Env
 loadDefs strings = go 0 [] strings where
-    go :: Int -> [(Char, (Term, Ty))] -> [String] -> Either String [(Char, (Term, Ty))]
+    go :: Int -> Env -> [String] -> Either String Env
     go _ env [] = Right env
     go n env (l:ls) = case parseDef l of
         Right (c,term) -> case mergeEnv c term env of
@@ -242,7 +243,7 @@ loadDefs strings = go 0 [] strings where
             Left msg -> Left ("line " ++ show n ++ ": " ++ msg)
         Left err -> Left ("line " ++ show n ++ ": " ++ err)
 
-mergeEnv :: Char -> Term -> [(Char, (Term,Ty))] -> Either String (Ty, [(Char, (Term, Ty))])
+mergeEnv :: Char -> Term -> Env -> Either String (Ty, Env)
 mergeEnv c term env = 
     let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
     case frees term \\ map fst env of
@@ -251,12 +252,19 @@ mergeEnv c term env =
             Left msg -> Left msg
         (v:_) -> Left ([v] ++ " not defined")
 
-envGet :: [(Char, (Term, Ty))] -> Char -> Term
+wouldMerge :: Term -> Env -> Either String Ty
+wouldMerge term env =
+    let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
+    case frees term \\ map fst env of
+        []    -> infer ctx term
+        (v:_) -> Left ([v] ++ " not defined")
+
+envGet :: Env -> Char -> Term
 envGet env c = case lookup c env of
     Just (term,_) -> term
     Nothing       -> error ([c] ++ " not in environment")
 
-repl :: [(Char,(Term,Ty))] -> IO ()
+repl :: Env -> IO ()
 repl env = do
     putChar '>'
     putChar ' '
@@ -282,13 +290,18 @@ repl env = do
                 Left msg -> do
                     putStrLn msg
                     repl env
-        ["eval", [c]] -> case lookup c env of
-            Just (term,_) -> do
-                let value = nf (envGet env) term
-                print value
-                repl env
+        ("eval" : more) -> case parseTerm (unwords more) of
+            Just term -> case wouldMerge term env of
+                Right t -> do
+                    putStrLn ("inferred type: " ++ show t)
+                    let value = nf (envGet env) term
+                    putStrLn ("evaluates to: " ++ show value)
+                    repl env
+                Left msg -> do
+                    putStrLn msg
+                    repl env
             Nothing -> do
-                putStrLn "not found"
+                putStrLn "failed to parse the program"
                 repl env
         _ -> case parseDef line of
             Left msg -> putStrLn msg >> repl env
