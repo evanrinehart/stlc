@@ -335,7 +335,7 @@ helpMsg =
     \list command - display the defined terms held in memory and their types\n\
     \save command - save the defined terms to a file called `floppy'\n\
     \load command - clear all definitions and load those in file `floppy'\n\
-    \eval <letter> command - evaluate the term <letter> found in the environment\n\
+    \eval <term> command - evaluate the term <term> within the environment\n\
     \\n\
     \Typing judgments. <term> : <type> means the term <term> has type <type>.\n\
     \When a definition is entered, the program will check that the term is well-typed\n\

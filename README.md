@@ -24,7 +24,7 @@ Parentheses can be used in terms and types to override associativity.
 
 `load` command - Clear all definitions and load those in file 'floppy'.
 
-`eval <letter>` command - Evaluate the term `<letter>` found in the environment.
+`eval <term>` command - Evaluate the term `<term>` within the environment.
 
 Typing judgments. `<term> : <type>` means the term `<term>` has type `<type>`.
 
