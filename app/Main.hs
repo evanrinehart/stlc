@@ -1,9 +1,11 @@
 {-# LANGUAGE ViewPatterns #-}
 module Main where
 
-import Data.Char (isAlpha)
+import Data.Char (isLetter, isLower)
 import Data.List (nub, (\\))
 import System.IO
+
+import Debug.Trace
 
 -- type datatype printer and parser
 
@@ -85,7 +87,7 @@ tokens (')' : more) = TokClose : tokens more
 tokens ('\\' : more) = TokLam : tokens more
 tokens ('-' : '>' : more) = TokArrow : tokens more
 tokens (c : more)
-    | isAlpha c = TokLetter c : tokens more
+    | isLetter c = TokLetter c : tokens more
     | otherwise = [TokErr]
 
 tprimary :: [Token] -> Maybe (Term, [Token])
@@ -118,18 +120,20 @@ nf env term             = nf env (step env term)
 
 -- reduce a well-typed, term by one step. Environment is used for free variables only
 step :: (Char -> Term) -> Term -> Term
-step env (App (Lambda x _ e1) e2) = subst x e2 e1
+step env (App (Lambda x _ e1) e2) = subst (frees e2) x e2 e1
 step env (App e1 e2) = App (step env e1) e2
 step env l@(Lambda _ _ _) = l
 step env Star    = Star
 step env (Var x) = env x
 
+{-
 -- substitute free occurrence of x with rep
 subst :: Char -> Term -> Term -> Term
 subst x rep (App e1 e2)      = App (subst x rep e1) (subst x rep e2)
 subst x rep l@(Lambda y t e) = if x==y then l else Lambda y t (subst x rep e)
 subst x rep (Var y)          = if x==y then rep else (Var y)
 subst x rep Star             = Star
+-}
 
 -- check that a term has a given type
 check :: (Char -> Ty) -> Term -> Ty -> Either String ()
@@ -147,6 +151,35 @@ check ctx (Lambda x (Just t) e) Unit = Left "lambda type mismatch"
 check ctx (Lambda x (Just t) e) (Fun u v) = do
     match t u
     check (\c -> if c==x then t else ctx c) e v
+
+-- rename free variables assuming the new name isn't used free
+rename :: Char -> Char -> Term -> Term
+rename a b (Var x)        = if a==x then (Var b) else (Var x)
+rename a b (Lambda x t e) = if a==x then Lambda x t e else Lambda x t (rename a b e)
+rename a b (App e1 e2)    = App (rename a b e1) (rename a b e2)
+rename a b Star           = Star
+
+unused :: Term -> String
+unused term = (filter isLower (filter isLetter ['\0'..])) \\ frees term
+
+absent :: Char -> Term -> Bool
+absent c (Var x)        = c /= x
+absent c (App e1 e2)    = absent c e1 && absent c e2
+absent c (Lambda x _ e) = if c==x then True else absent c e
+absent c Star           = True
+
+subst :: [Char] -> Char -> Term -> Term -> Term
+subst vs c rep Star           = Star
+subst vs c rep (Var x)        = if c==x then rep else Var x
+subst vs c rep (App e1 e2)    = App (subst vs c rep e1) (subst vs c rep e2)
+subst vs c rep (Lambda x t e) =
+    if c == x
+        then Lambda x t e
+        else if not (x `elem` vs) || absent c e
+            then Lambda x t (subst vs c rep e)
+            else
+                let y = head (unused (Lambda x t e) \\ vs)
+                in Lambda y t (subst vs c rep (rename x y e))
 
 -- infer the type of a lambda term if possible
 infer :: (Char -> Ty) -> Term -> Either String Ty
@@ -187,7 +220,7 @@ defHelp = "definitions must be of the form <letter> = <term>"
 
 parseDef :: String -> Either String (Char, Term)
 parseDef (c : ' ' : '=' : ' ' : more)
-    | isAlpha c = case parseTerm more of
+    | isLetter c = case parseTerm more of
         Just term -> Right (c, term);
         Nothing -> Left "failed to parse term"
     | otherwise = Left defHelp
