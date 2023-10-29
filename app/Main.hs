@@ -330,7 +330,7 @@ helpMsg :: String
 helpMsg =
     "Simply typed lambda calculus program.\n\
     \\n\
-    \Commands: help list save load eval\n\
+    \Commands: help list save load eval type\n\
     \\n\
     \Definitions: <letter> = <term>\n\
     \\n\
