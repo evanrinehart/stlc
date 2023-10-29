@@ -173,9 +173,9 @@ subst vs c rep Star           = Star
 subst vs c rep (Var x)        = if c==x then rep else Var x
 subst vs c rep (App e1 e2)    = App (subst vs c rep e1) (subst vs c rep e2)
 subst vs c rep (Lambda x t e) =
-    if c == x
+    if c == x || absent c e
         then Lambda x t e
-        else if not (x `elem` vs) || absent c e
+        else if not (x `elem` vs)
             then Lambda x t (subst vs c rep e)
             else
                 let y = head (unused (Lambda x t e) \\ vs)
