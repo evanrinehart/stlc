@@ -116,7 +116,7 @@ nf env l@(Lambda _ _ _) = l
 nf env Star             = Star
 nf env term             = nf env (step env term)
 
--- reduce a well-typed, closed, term by one step
+-- reduce a well-typed, term by one step. Environment is used for free variables only
 step :: (Char -> Term) -> Term -> Term
 step env (App (Lambda x _ e1) e2) = subst x e2 e1
 step env (App e1 e2) = App (step env e1) e2
@@ -125,7 +125,6 @@ step env Star    = Star
 step env (Var x) = env x
 
 -- substitute free occurrence of x with rep
--- if rep has no free variables, capture avoidance is satisfied
 subst :: Char -> Term -> Term -> Term
 subst x rep (App e1 e2)      = App (subst x rep e1) (subst x rep e2)
 subst x rep l@(Lambda y t e) = if x==y then l else Lambda y t (subst x rep e)
