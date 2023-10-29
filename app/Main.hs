@@ -174,21 +174,9 @@ frees term = nub (go [] term) where
 
 -- check that a term has a given type
 check :: (Char -> Ty) -> Term -> Ty -> Either String ()
-check ctx (Var x) t = match (ctx x) t
-check ctx Star Unit = Right ()
-check ctx Star _    = Left "star type mismatch"
-check ctx (App e1 e2) t = do
-    w <- infer ctx e1
-    case w of
-        Fun u v -> do
-            check ctx e2 u
-            match v t
-        Unit    -> Left "app type mismatch"
-check ctx (Lambda x _       _) Unit      = Left "lambda type mismatch"
-check ctx (Lambda _ Nothing _) (Fun _ _) = Left "unannotated lambda"
-check ctx (Lambda x (Just t) e) (Fun u v) = do
-    match t u
-    check (\c -> if c==x then t else ctx c) e v
+check ctx term t = case infer ctx term of
+    Right u -> match t u
+    Left msg -> Left msg
 
 -- infer the type of a lambda term if possible
 infer :: (Char -> Ty) -> Term -> Either String Ty
