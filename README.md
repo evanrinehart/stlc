@@ -37,3 +37,9 @@ the environment.
 Notable facts about simply typed lambda calculus. Once a definition is parsed and
 type-checked within a given environment, evaluation always produces a normal
 form in finite time. The normal form is unique and of the correct type.
+
+* Datatypes, parsers, pretty printers - 101 lines
+* Evaluator - 54 lines, complicated by substituting open terms
+* Type checker - 39 lines
+* REPL - 101 lines
+* Help messages - 33 lines
