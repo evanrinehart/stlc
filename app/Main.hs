@@ -184,7 +184,8 @@ check ctx (App e1 e2) t = do
             check ctx e2 u
             match v t
         Unit    -> Left "app type mismatch"
-check ctx (Lambda x (Just t) e) Unit = Left "lambda type mismatch"
+check ctx (Lambda x _       _) Unit      = Left "lambda type mismatch"
+check ctx (Lambda _ Nothing _) (Fun _ _) = Left "unannotated lambda"
 check ctx (Lambda x (Just t) e) (Fun u v) = do
     match t u
     check (\c -> if c==x then t else ctx c) e v
