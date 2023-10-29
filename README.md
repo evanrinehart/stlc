@@ -10,19 +10,21 @@ Definitions: `<letter> = <term>`
 <type> = 1 | <type> -> <type>
 ```
 
-a chain of `<term> <term> <term> ...` associates to the left
-a chain of `<type> -> <type> -> <type> -> ...` associates to the right
-parentheses can be used in terms and types to override associativity
+A chain of `<term> <term> <term> ...` associates to the left.
 
-`help` command - you're looking at it
+A chain of `<type> -> <type> -> <type> -> ...` associates to the right.
 
-`list` command - display the defined terms held in memory and their types
+Parentheses can be used in terms and types to override associativity.
 
-`save` command - save the defined terms to a file called 'floppy'
+`help` command - You're looking at it.
 
-`load` command - clear all definitions and load those in file 'floppy'
+`list` command - Display the defined terms held in memory and their types.
 
-`eval <letter>` command - evaluate the term `<letter>` found in the environment
+`save` command - Save the defined terms to a file called 'floppy'.
+
+`load` command - Clear all definitions and load those in file 'floppy'.
+
+`eval <letter>` command - Evaluate the term `<letter>` found in the environment.
 
 Typing judgments. `<term> : <type>` means the term `<term>` has type `<type>`.
 
@@ -31,3 +33,7 @@ well-typed in the context of previously terms entered. If there is a problem
 during this process an error message will be printed and nothing new is
 defined. Otherwise the term's type is printed and the definition is appended to
 the environment.
+
+Notable facts about simply typed lambda calculus. Once a definition is parsed and
+type-checked within a given environment, evaluation always produces a normal
+form in finite time. The normal form is unique of the expected type.
