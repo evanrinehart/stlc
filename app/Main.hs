@@ -119,7 +119,7 @@ nf env l@(Lambda _ _ _) = l
 nf env Star             = Star
 nf env term             = nf env (step env term)
 
--- reduce a well-typed, term by one step. Environment is used for free variables only
+-- reduce a well-typed term by one step. Environment is used for free variables only
 step :: (Char -> Term) -> Term -> Term
 step env (App (Lambda x _ e1) e2) = subst (frees e2) x e2 e1
 step env (App e1 e2) = App (step env e1) e2
