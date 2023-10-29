@@ -29,11 +29,11 @@ Parentheses can be used in terms and types to override associativity.
 Typing judgments. `<term> : <type>` means the term `<term>` has type `<type>`.
 
 When a definition is entered, the program will check that the term is
-well-typed in the context of previously terms entered. If there is a problem
+well-typed in the context of previously entered terms. If there is a problem
 during this process an error message will be printed and nothing new is
 defined. Otherwise the term's type is printed and the definition is appended to
 the environment.
 
 Notable facts about simply typed lambda calculus. Once a definition is parsed and
 type-checked within a given environment, evaluation always produces a normal
-form in finite time. The normal form is unique and of the expected type.
+form in finite time. The normal form is unique and of the correct type.

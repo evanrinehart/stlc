@@ -299,8 +299,11 @@ helpMsg =
     \When a definition is entered, the program will check that the term is well-typed\n\
     \in the context of previously terms entered. If there is a problem during this\n\
     \process an error message will be printed and nothing new is defined. Otherwise\n\
-    \the term's type is printed and the definition is appended to the environment.\n"
+    \the term's type is printed and the definition is appended to the environment.\n\
+    \\n\
+    \Notable facts about simply typed lambda calculus. Once a definition is parsed\n\
+    \and type-checked within a given environment, evaluation always produces a\n\
+    \normal form in finite time. The normal form is unique and of the correct type.\n"
 
 
-main = do
-    repl []
+main = repl []
