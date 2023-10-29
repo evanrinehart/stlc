@@ -122,10 +122,10 @@ nf env term             = nf env (step env term)
 -- reduce a well-typed term by one step. Environment is used for free variables only
 step :: (Char -> Term) -> Term -> Term
 step env (App (Lambda x _ e1) e2) = subst (frees e2) x e2 e1
-step env (App e1 e2) = App (step env e1) e2
-step env l@(Lambda _ _ _) = l
-step env Star    = Star
-step env (Var x) = env x
+step env (App e1 e2)              = App (step env e1) e2
+step env l@(Lambda _ _ _)         = l
+step env Star                     = Star
+step env (Var x)                  = env x
 
 -- capture avoiding substitution
 subst :: [Char] -> Char -> Term -> Term -> Term
@@ -133,11 +133,11 @@ subst vs c rep Star           = Star
 subst vs c rep (Var x)        = if c==x then rep else Var x
 subst vs c rep (App e1 e2)    = App (subst vs c rep e1) (subst vs c rep e2)
 subst vs c rep (Lambda x t e) =
-    if c == x || absent c e
+    if c == x || absent c e -- then nothing would be substituted anyway, do nothing
         then Lambda x t e
-        else if not (x `elem` vs)
+        else if not (x `elem` vs) -- substituting would not capture x, go ahead
             then Lambda x t (subst vs c rep e)
-            else
+            else -- need to rename the bound variable to avoid disaster
                 let y = head (unused (Lambda x t e) \\ vs)
                 in Lambda y t (subst vs c rep (rename x y e))
 
