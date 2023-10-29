@@ -36,4 +36,4 @@ the environment.
 
 Notable facts about simply typed lambda calculus. Once a definition is parsed and
 type-checked within a given environment, evaluation always produces a normal
-form in finite time. The normal form is unique of the expected type.
+form in finite time. The normal form is unique and of the expected type.
