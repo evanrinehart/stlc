@@ -5,8 +5,6 @@ import Data.Char (isLetter, isLower)
 import Data.List (nub, (\\))
 import System.IO
 
-import Debug.Trace
-
 -- type datatype printer and parser
 
 data Ty = Unit | Fun Ty Ty
@@ -21,30 +19,27 @@ pp (Fun t1 t2) = paren t1 . (" -> " ++) . pp t2 where
     paren Unit = pp Unit
     paren t@(Fun _ _) = ("(" ++) . pp t . (")" ++)
 
+type Token = String
 type Parser a = [Token] -> Maybe (a, [Token])
-
-data Token =
-    TokColon | TokOne | TokStar | TokOpen | TokClose | TokLam | TokLetter Char | TokArrow | TokErr
-        deriving Show
 
 parseType :: String -> Maybe Ty
 parseType input = case ty (tokens input) of
     Just (t, []) -> Just t
-    Nothing      -> Nothing
+    _            -> Nothing
 
 ty :: Parser Ty
 ty (chain primary -> Just (ts, rest)) = Just (foldr1 Fun ts, rest)
 ty _                                  = Nothing
 
 primary :: Parser Ty
-primary (TokOne : rest)                               = Just (Unit, rest)
-primary (TokOpen : (ty -> Just (t, TokClose : rest))) = Just (t, rest)
-primary _                                             = Nothing
+primary ("1" : rest)                         = Just (Unit, rest)
+primary ("(" : (ty -> Just (t, ")" : rest))) = Just (t, rest)
+primary _                                    = Nothing
 
 chain :: Parser a -> Parser [a]
-chain p (p -> Just (x, TokArrow : (chain p -> Just (xs, rest)))) = Just (x:xs, rest)
-chain p (p -> Just (x, rest))                                    = Just ([x], rest)
-chain p _                                                        = Nothing
+chain p (p -> Just (x, "->" : (chain p -> Just (xs, rest)))) = Just (x:xs, rest)
+chain p (p -> Just (x, rest))                                = Just ([x], rest)
+chain p _                                                    = Nothing
 
 
 -- term datatype printer and parser
@@ -79,23 +74,24 @@ tokens [] = []
 tokens (' ' : more) = tokens more
 tokens ('\n' : more) = tokens more
 tokens ('\t' : more) = tokens more
-tokens ('*' : more) = TokStar : tokens more
-tokens ('1' : more) = TokOne : tokens more
-tokens (':' : more) = TokColon : tokens more
-tokens ('(' : more) = TokOpen : tokens more
-tokens (')' : more) = TokClose : tokens more
-tokens ('\\' : more) = TokLam : tokens more
-tokens ('-' : '>' : more) = TokArrow : tokens more
+tokens ('*' : more) = "*" : tokens more
+tokens ('1' : more) = "1" : tokens more
+tokens (':' : more) = ":" : tokens more
+tokens ('(' : more) = "(" : tokens more
+tokens (')' : more) = ")" : tokens more
+tokens ('\\' : more) = "\\" : tokens more
+tokens ('-' : '>' : more) = "->" : tokens more
 tokens (c : more)
-    | isLetter c = TokLetter c : tokens more
-    | otherwise = [TokErr]
+    | isLetter c = ['a', c] : tokens more
+    | otherwise = ["LexError"]
 
 tprimary :: [Token] -> Maybe (Term, [Token])
-tprimary (TokStar : more) = Just (Star, more)
-tprimary (TokLetter x : more) = Just (Var x, more)
-tprimary (TokLam : TokLetter x : TokColon : (ty -> Just (t, TokArrow : (term -> Just (e,more))))) = Just (Lambda x (Just t) e, more)
-tprimary (TokLam : TokLetter x : TokArrow : (term -> Just (e,more))) = Just (Lambda x Nothing e, more)
-tprimary (TokOpen : (term -> Just (e, TokClose : more))) = Just (e, more)
+tprimary ("*" : more) = Just (Star, more)
+tprimary (['a',x] : more) = Just (Var x, more)
+tprimary ("\\" : ['a',x] : ":" : (ty -> Just (t, "->" : (term -> Just (e,more))))) =
+    Just (Lambda x (Just t) e, more)
+tprimary ("\\" : ['a',x] : "->" : (term -> Just (e,more))) = Just (Lambda x Nothing e, more)
+tprimary ("(" : (term -> Just (e, ")" : more))) = Just (e, more)
 tprimary _ = Nothing
 
 term input = fmap g (tchain tprimary input) where
@@ -184,10 +180,10 @@ subst vs c rep (Lambda x t e) =
 -- infer the type of a lambda term if possible
 infer :: (Char -> Ty) -> Term -> Either String Ty
 infer ctx (Var x) = Right (ctx x)
-infer ctx Star    = Right Unit
+infer _   Star    = Right Unit
 infer ctx (Lambda x (Just t) e) = fmap (\u -> Fun t u) (infer ctx' e)
     where ctx' c = if c==x then t else ctx c
-infer ctx (Lambda x Nothing e) = Left "lambda missing type annotation"
+infer _   (Lambda _ Nothing _) = Left "lambda missing type annotation"
 infer ctx (App e1 e2) = do
     t <- infer ctx e1
     case t of
@@ -214,9 +210,9 @@ frees term = nub (go [] term) where
     go env (App e1 e2) = go env e1 ++ go env e2
     go env (Lambda x _ e) = go (x:env) e
 
-p x = let Just t = parseTerm x in t
-
-defHelp = "definitions must be of the form <letter> = <term>"
+p :: String -> Term
+p (parseTerm -> Just t) = t
+p _                     = error "parse failed"
 
 parseDef :: String -> Either String (Char, Term)
 parseDef (c : ' ' : '=' : ' ' : more)
@@ -237,8 +233,9 @@ saveDefs env = do
     writeFile "floppy" $ unlines (map (\(c,(term,_)) -> [c] ++ " = " ++ show term) env)
 
 loadDefs :: [String] -> Either String [(Char, (Term,Ty))]
-loadDefs ls = go 0 [] ls where
-    go n env [] = Right env
+loadDefs strings = go 0 [] strings where
+    go :: Int -> [(Char, (Term, Ty))] -> [String] -> Either String [(Char, (Term, Ty))]
+    go _ env [] = Right env
     go n env (l:ls) = case parseDef l of
         Right (c,term) -> case mergeEnv c term env of
             Right (_,env') -> go (n+1) env' ls
@@ -248,12 +245,11 @@ loadDefs ls = go 0 [] ls where
 mergeEnv :: Char -> Term -> [(Char, (Term,Ty))] -> Either String (Ty, [(Char, (Term, Ty))])
 mergeEnv c term env = 
     let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
-    let vs = frees term in
     case frees term \\ map fst env of
         [] -> case infer ctx term of
             Right t  -> Right (t, ((c, (term,t)) : env))
             Left msg -> Left msg
-        (c:_) -> Left ([c] ++ " not defined")
+        (v:_) -> Left ([v] ++ " not defined")
 
 envGet :: [(Char, (Term, Ty))] -> Char -> Term
 envGet env c = case lookup c env of
@@ -306,6 +302,7 @@ repl env = do
                     repl env
 
 
+helpMsg :: String
 helpMsg =
     "Simply typed lambda calculus program.\n\
     \\n\
@@ -337,5 +334,9 @@ helpMsg =
     \and type-checked within a given environment, evaluation always produces a\n\
     \normal form in finite time. The normal form is unique and of the correct type.\n"
 
+defHelp :: String
+defHelp = "definitions must be of the form <letter> = <term>"
 
+
+main :: IO ()
 main = repl []
