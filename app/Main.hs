@@ -7,20 +7,11 @@ import System.IO
 
 -- type datatype printer and parser
 
-data Ty = Unit | Fun Ty Ty
-
-instance Show Ty where
-    showsPrec 0 t = pp t
-    showsPrec _ t = ('(':) . pp t . (')':)
-
-pp :: Ty -> String -> String
-pp Unit        = ('1' :)
-pp (Fun t1 t2) = paren t1 . (" -> " ++) . pp t2 where
-    paren Unit = pp Unit
-    paren t@(Fun _ _) = ("(" ++) . pp t . (")" ++)
-
 type Token = String
+
 type Parser a = [Token] -> Maybe (a, [Token])
+
+data Ty = Unit | Fun Ty Ty
 
 parseType :: String -> Maybe Ty
 parseType input = case ty (tokens input) of
@@ -41,6 +32,16 @@ chain p (p -> Just (x, "->" : (chain p -> Just (xs, rest)))) = Just (x:xs, rest)
 chain p (p -> Just (x, rest))                                = Just ([x], rest)
 chain p _                                                    = Nothing
 
+pp :: Ty -> String -> String
+pp Unit        = ('1' :)
+pp (Fun t1 t2) = paren t1 . (" -> " ++) . pp t2 where
+    paren Unit = pp Unit
+    paren t@(Fun _ _) = ("(" ++) . pp t . (")" ++)
+
+instance Show Ty where
+    showsPrec 0 t = pp t
+    showsPrec _ t = ('(':) . pp t . (')':)
+
 
 -- term datatype printer and parser
 
@@ -50,9 +51,27 @@ data Term =
     App Term Term |
     Lambda Char (Maybe Ty) Term
 
-instance Show Term where
-    showsPrec 0 t = tpp t
-    showsPrec _ t = ('(':) . tpp t . (')':)
+parseTerm :: String -> Maybe Term
+parseTerm input = case term (tokens input) of
+    Just (t, []) -> Just t
+    _            -> Nothing
+
+term input = fmap g (tchain tprimary input) where
+    g (terms, more) = (foldl1 App terms, more)
+
+tprimary :: [Token] -> Maybe (Term, [Token])
+tprimary ("*" : more) = Just (Star, more)
+tprimary (['a',x] : more) = Just (Var x, more)
+tprimary ("\\" : ['a',x] : ":" : (ty -> Just (t, "->" : (term -> Just (e,more))))) =
+    Just (Lambda x (Just t) e, more)
+tprimary ("\\" : ['a',x] : "->" : (term -> Just (e,more))) = Just (Lambda x Nothing e, more)
+tprimary ("(" : (term -> Just (e, ")" : more))) = Just (e, more)
+tprimary _ = Nothing
+
+tchain :: ([Token] -> Maybe (a, [Token])) -> [Token] -> Maybe ([a], [Token])
+tchain p (p -> Just (x, (tchain p -> Just (xs, rest)))) = Just (x:xs, rest)
+tchain p (p -> Just (x, rest))                          = Just ([x], rest)
+tchain p _                                              = Nothing
 
 tpp :: Term -> String -> String
 tpp Star = ('*':)
@@ -68,6 +87,12 @@ tpp (App e1 e2) = lparen e1 . (' ':) . rparen e2 where
     rparen t@(Lambda _ _ _) = parens t
     rparen other          = tpp other
     parens t = ('(':) . tpp t . (')':)
+
+instance Show Term where
+    showsPrec 0 t = tpp t
+    showsPrec _ t = ('(':) . tpp t . (')':)
+
+-- tokenizer
 
 tokens :: String -> [Token]
 tokens [] = []
@@ -85,30 +110,10 @@ tokens (c : more)
     | isLetter c = ['a', c] : tokens more
     | otherwise = ["LexError"]
 
-tprimary :: [Token] -> Maybe (Term, [Token])
-tprimary ("*" : more) = Just (Star, more)
-tprimary (['a',x] : more) = Just (Var x, more)
-tprimary ("\\" : ['a',x] : ":" : (ty -> Just (t, "->" : (term -> Just (e,more))))) =
-    Just (Lambda x (Just t) e, more)
-tprimary ("\\" : ['a',x] : "->" : (term -> Just (e,more))) = Just (Lambda x Nothing e, more)
-tprimary ("(" : (term -> Just (e, ")" : more))) = Just (e, more)
-tprimary _ = Nothing
 
-term input = fmap g (tchain tprimary input) where
-    g (terms, more) = (foldl1 App terms, more)
+-- evaluator
 
-tchain :: ([Token] -> Maybe (a, [Token])) -> [Token] -> Maybe ([a], [Token])
-tchain p (p -> Just (x, (tchain p -> Just (xs, rest)))) = Just (x:xs, rest)
-tchain p (p -> Just (x, rest))                          = Just ([x], rest)
-tchain p _                                              = Nothing
-
-parseTerm :: String -> Maybe Term
-parseTerm input = case term (tokens input) of
-    Just (t, []) -> Just t
-    _            -> Nothing
-
-
--- reduce a well-typed, closed, term to normal form
+-- reduce a well-typed (in the environment) term to normal form
 nf :: (Char -> Term) -> Term -> Term
 nf env l@(Lambda _ _ _) = l
 nf env Star             = Star
@@ -122,14 +127,50 @@ step env l@(Lambda _ _ _) = l
 step env Star    = Star
 step env (Var x) = env x
 
-{-
--- substitute free occurrence of x with rep
-subst :: Char -> Term -> Term -> Term
-subst x rep (App e1 e2)      = App (subst x rep e1) (subst x rep e2)
-subst x rep l@(Lambda y t e) = if x==y then l else Lambda y t (subst x rep e)
-subst x rep (Var y)          = if x==y then rep else (Var y)
-subst x rep Star             = Star
--}
+-- capture avoiding substitution
+subst :: [Char] -> Char -> Term -> Term -> Term
+subst vs c rep Star           = Star
+subst vs c rep (Var x)        = if c==x then rep else Var x
+subst vs c rep (App e1 e2)    = App (subst vs c rep e1) (subst vs c rep e2)
+subst vs c rep (Lambda x t e) =
+    if c == x || absent c e
+        then Lambda x t e
+        else if not (x `elem` vs)
+            then Lambda x t (subst vs c rep e)
+            else
+                let y = head (unused (Lambda x t e) \\ vs)
+                in Lambda y t (subst vs c rep (rename x y e))
+
+-- test if variable is not found in term
+absent :: Char -> Term -> Bool
+absent c (Var x)        = c /= x
+absent c (App e1 e2)    = absent c e1 && absent c e2
+absent c (Lambda x _ e) = if c==x then True else absent c e
+absent c Star           = True
+
+-- produce a stream of unused letters
+unused :: Term -> String
+unused term = (filter isLower (filter isLetter ['\0'..])) \\ frees term
+
+-- rename free variables assuming the new name isn't used free
+rename :: Char -> Char -> Term -> Term
+rename a b (Var x)        = if a==x then (Var b) else (Var x)
+rename a b (Lambda x t e) = if a==x then Lambda x t e else Lambda x t (rename a b e)
+rename a b (App e1 e2)    = App (rename a b e1) (rename a b e2)
+rename a b Star           = Star
+
+-- enumerate the free variables in the term
+frees :: Term -> [Char]
+frees term = nub (go [] term) where
+    go env (Var x) = if x `elem` env then [] else [x]
+    go env Star = []
+    go env (App e1 e2) = go env e1 ++ go env e2
+    go env (Lambda x _ e) = go (x:env) e
+
+
+
+
+-- type checker
 
 -- check that a term has a given type
 check :: (Char -> Ty) -> Term -> Ty -> Either String ()
@@ -148,35 +189,6 @@ check ctx (Lambda x (Just t) e) (Fun u v) = do
     match t u
     check (\c -> if c==x then t else ctx c) e v
 
--- rename free variables assuming the new name isn't used free
-rename :: Char -> Char -> Term -> Term
-rename a b (Var x)        = if a==x then (Var b) else (Var x)
-rename a b (Lambda x t e) = if a==x then Lambda x t e else Lambda x t (rename a b e)
-rename a b (App e1 e2)    = App (rename a b e1) (rename a b e2)
-rename a b Star           = Star
-
-unused :: Term -> String
-unused term = (filter isLower (filter isLetter ['\0'..])) \\ frees term
-
-absent :: Char -> Term -> Bool
-absent c (Var x)        = c /= x
-absent c (App e1 e2)    = absent c e1 && absent c e2
-absent c (Lambda x _ e) = if c==x then True else absent c e
-absent c Star           = True
-
-subst :: [Char] -> Char -> Term -> Term -> Term
-subst vs c rep Star           = Star
-subst vs c rep (Var x)        = if c==x then rep else Var x
-subst vs c rep (App e1 e2)    = App (subst vs c rep e1) (subst vs c rep e2)
-subst vs c rep (Lambda x t e) =
-    if c == x || absent c e
-        then Lambda x t e
-        else if not (x `elem` vs)
-            then Lambda x t (subst vs c rep e)
-            else
-                let y = head (unused (Lambda x t e) \\ vs)
-                in Lambda y t (subst vs c rep (rename x y e))
-
 -- infer the type of a lambda term if possible
 infer :: (Char -> Ty) -> Term -> Either String Ty
 infer ctx (Var x) = Right (ctx x)
@@ -193,76 +205,18 @@ infer ctx (App e1 e2) = do
             match u w
             Right v
 
+-- check that types match
+match :: Ty -> Ty -> Either String ()
 match (Fun a b) (Fun c d) = match a c >> match b d
 match Unit Unit           = Right ()
 match _ _                 = Left "match failed"
 
 
 
+
 -- A repl
 
 type Env = [(Char, (Term,Ty))]
-
--- enumerate the free variables in the term
-frees :: Term -> [Char]
-frees term = nub (go [] term) where
-    go env (Var x) = if x `elem` env then [] else [x]
-    go env Star = []
-    go env (App e1 e2) = go env e1 ++ go env e2
-    go env (Lambda x _ e) = go (x:env) e
-
-p :: String -> Term
-p (parseTerm -> Just t) = t
-p _                     = error "parse failed"
-
-parseDef :: String -> Either String (Char, Term)
-parseDef (c : ' ' : '=' : ' ' : more)
-    | isLetter c = case parseTerm more of
-        Just term -> Right (c, term);
-        Nothing -> Left "failed to parse term"
-    | otherwise = Left defHelp
-parseDef _ = Left defHelp
-
-printDef :: (Char, (Term,Ty)) -> IO ()
-printDef (c,(term,t)) = do
-    putStrLn ([c] ++ " : " ++ show t)
-    putStrLn ([c] ++ " = " ++ show term)
-    putStrLn ""
-
-saveDefs :: Env -> IO ()
-saveDefs env = do
-    writeFile "floppy" $ unlines (map (\(c,(term,_)) -> [c] ++ " = " ++ show term) env)
-
-loadDefs :: [String] -> Either String Env
-loadDefs strings = go 0 [] strings where
-    go :: Int -> Env -> [String] -> Either String Env
-    go _ env [] = Right env
-    go n env (l:ls) = case parseDef l of
-        Right (c,term) -> case mergeEnv c term env of
-            Right (_,env') -> go (n+1) env' ls
-            Left msg -> Left ("line " ++ show n ++ ": " ++ msg)
-        Left err -> Left ("line " ++ show n ++ ": " ++ err)
-
-mergeEnv :: Char -> Term -> Env -> Either String (Ty, Env)
-mergeEnv c term env = 
-    let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
-    case frees term \\ map fst env of
-        [] -> case infer ctx term of
-            Right t  -> Right (t, ((c, (term,t)) : env))
-            Left msg -> Left msg
-        (v:_) -> Left ([v] ++ " not defined")
-
-wouldMerge :: Term -> Env -> Either String Ty
-wouldMerge term env =
-    let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
-    case frees term \\ map fst env of
-        []    -> infer ctx term
-        (v:_) -> Left ([v] ++ " not defined")
-
-envGet :: Env -> Char -> Term
-envGet env c = case lookup c env of
-    Just (term,_) -> term
-    Nothing       -> error ([c] ++ " not in environment")
 
 repl :: Env -> IO ()
 repl env = do
@@ -314,6 +268,54 @@ repl env = do
                     putStrLn msg
                     repl env
 
+parseDef :: String -> Either String (Char, Term)
+parseDef (c : ' ' : '=' : ' ' : more)
+    | isLetter c = case parseTerm more of
+        Just term -> Right (c, term);
+        Nothing -> Left "failed to parse term"
+    | otherwise = Left defHelp
+parseDef _ = Left defHelp
+
+printDef :: (Char, (Term,Ty)) -> IO ()
+printDef (c,(term,t)) = do
+    putStrLn ([c] ++ " : " ++ show t)
+    putStrLn ([c] ++ " = " ++ show term)
+    putStrLn ""
+
+saveDefs :: Env -> IO ()
+saveDefs env = do
+    writeFile "floppy" $ unlines (map (\(c,(term,_)) -> [c] ++ " = " ++ show term) env)
+
+loadDefs :: [String] -> Either String Env
+loadDefs strings = go 0 [] strings where
+    go :: Int -> Env -> [String] -> Either String Env
+    go _ env [] = Right env
+    go n env (l:ls) = case parseDef l of
+        Right (c,term) -> case mergeEnv c term env of
+            Right (_,env') -> go (n+1) env' ls
+            Left msg -> Left ("line " ++ show n ++ ": " ++ msg)
+        Left err -> Left ("line " ++ show n ++ ": " ++ err)
+
+mergeEnv :: Char -> Term -> Env -> Either String (Ty, Env)
+mergeEnv c term env = 
+    let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
+    case frees term \\ map fst env of
+        [] -> case infer ctx term of
+            Right t  -> Right (t, ((c, (term,t)) : env))
+            Left msg -> Left msg
+        (v:_) -> Left ([v] ++ " not defined")
+
+wouldMerge :: Term -> Env -> Either String Ty
+wouldMerge term env =
+    let ctx v = case lookup v env of Just (_,t) -> t; Nothing -> error "missing in context" in
+    case frees term \\ map fst env of
+        []    -> infer ctx term
+        (v:_) -> Left ([v] ++ " not defined")
+
+envGet :: Env -> Char -> Term
+envGet env c = case lookup c env of
+    Just (term,_) -> term
+    Nothing       -> error ([c] ++ " not in environment")
 
 helpMsg :: String
 helpMsg =
@@ -350,6 +352,9 @@ helpMsg =
 defHelp :: String
 defHelp = "definitions must be of the form <letter> = <term>"
 
+p :: String -> Term
+p (parseTerm -> Just t) = t
+p _                     = error "parse failed"
 
 main :: IO ()
 main = repl []
