@@ -258,6 +258,14 @@ repl env = do
             Nothing -> do
                 putStrLn "failed to parse the program"
                 repl env
+        ("type" : more) -> case parseTerm (unwords more) of
+            Just term -> case wouldMerge term env of
+                Right t -> do
+                    print t
+                    repl env
+                Left msg -> do
+                    putStrLn msg
+                    repl env
         _ -> case parseDef line of
             Left msg -> putStrLn msg >> repl env
             Right (c, term) -> case mergeEnv c term env of
@@ -339,6 +347,7 @@ helpMsg =
     \save command - save the defined terms to a file called `floppy'\n\
     \load command - clear all definitions and load those in file `floppy'\n\
     \eval <term> command - evaluate the term <term> within the environment\n\
+    \type <term> command - infer the type of <term> within the environment\n\
     \\n\
     \Typing judgments. <term> : <type> means the term <term> has type <type>.\n\
     \When a definition is entered, the program will check that the term is well-typed\n\

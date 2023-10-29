@@ -1,6 +1,6 @@
 Simply typed lambda calculus program.
 
-Commands: `help list save load eval`
+Commands: `help list save load eval type`
 
 Definitions: `<letter> = <term>`
 
@@ -25,6 +25,8 @@ Parentheses can be used in terms and types to override associativity.
 `load` command - Clear all definitions and load those in file 'floppy'.
 
 `eval <term>` command - Evaluate the term `<term>` within the environment.
+
+`type <term>` command - Infer the type of `<term>` within the environment.
 
 Typing judgments. `<term> : <type>` means the term `<term>` has type `<type>`.
 
